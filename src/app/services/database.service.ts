@@ -1,8 +1,8 @@
 import { Injectable } from '@angular/core';
 import {
   Database,
-  DatabaseConfiguration,
-  MutableDocument
+  DatabaseConfiguration, DataSource, Expression,
+  MutableDocument, QueryBuilder, SelectResult
 } from '@couchbase-community/ionic-couchbase-lite';
 import { Hotel } from '../models/hotel';
 
@@ -29,10 +29,10 @@ export class DatabaseService {
     this.bookmarkDocument = await this.findOrCreateBookmarkDocument();
   }
 
-  private async seedInitialData() { 
-    /* Note about encryption: In a real-world app, the encryption key should not be hardcoded like it is here. 
+  private async seedInitialData() {
+    /* Note about encryption: In a real-world app, the encryption key should not be hardcoded like it is here.
        One strategy is to auto generate a unique encryption key per user on initial app load, then store it securely in the device's keychain for later retrieval.
-       Ionic's Identity Vault (https://ionic.io/docs/identity-vault) plugin is an option. Using IV’s storage API, you can ensure that the 
+       Ionic's Identity Vault (https://ionic.io/docs/identity-vault) plugin is an option. Using IV’s storage API, you can ensure that the
        key cannot be read or accessed without the user being authenticated first. */
     let dc = new DatabaseConfiguration();
     dc.setEncryptionKey('8e31f8f6-60bd-482a-9c70-69855dd02c39');
@@ -50,7 +50,7 @@ export class DatabaseService {
           .setString('address', hotel.address)
           .setString('phone', hotel.phone)
           .setString('type', this.DOC_TYPE_HOTEL);
-        
+
         this.database.save(doc);
       }
     }
@@ -62,7 +62,7 @@ export class DatabaseService {
 
     // Get all bookmarked hotels
     let bookmarks = this.bookmarkDocument.getArray("hotels") as number[];
-    
+
     let hotelList: Hotel[] = [];
     for (let key in hotelResults) {
       // Couchbase can query multiple databases at once, so "_" is just this single database.
@@ -79,23 +79,30 @@ export class DatabaseService {
   }
 
   public async searchHotels(name): Promise<Hotel[]> {
-    const query = this.database.createQuery(
-        `SELECT * FROM _ WHERE name LIKE '%${name}%' AND type = '${this.DOC_TYPE_HOTEL}' ORDER BY name`);
+    const query = QueryBuilder.select(SelectResult.all())
+      .from(DataSource.database(this.database))
+      .where(Expression.property('type').equalTo(Expression.string('hotel')))
+      .limit(Expression.intValue(10));
+    /*const query = this.database.createQuery(
+        `SELECT * FROM _ WHERE name LIKE '%${name}%' AND type = '${this.DOC_TYPE_HOTEL}' ORDER BY name`);*/
     const results = await (await query.execute()).allResults();
 
     let filteredHotels: Hotel[] = [];
-    for (var key in results) {
+    /*for (var key in results) {
       let singleHotel = results[key]["_"] as Hotel;
 
       filteredHotels.push(singleHotel);
-    }
-
+    }*/
+    results.forEach(x=> {
+      filteredHotels.push(x['travel'] as Hotel);
+    });
+    console.log('LOGGG----', filteredHotels, JSON.stringify(results));
     return filteredHotels;
   }
 
   public async bookmarkHotel(hotelId: number) {
     let hotelArray = this.bookmarkDocument.getArray("hotels") as number[];
-    hotelArray.push(hotelId); 
+    hotelArray.push(hotelId);
     this.bookmarkDocument.setArray("hotels", hotelArray);
 
     this.database.save(this.bookmarkDocument);
@@ -109,11 +116,15 @@ export class DatabaseService {
 
     this.database.save(this.bookmarkDocument);
   }
-  
+
   private async findOrCreateBookmarkDocument(): Promise<MutableDocument> {
     // Meta().id is a GUID like e15d1aa2-9be3-4e02-92d8-82bd9d05d8e3
-    const bookmarkQuery = this.database.createQuery(
-      `SELECT META().id AS id FROM _ WHERE type = '${this.DOC_TYPE_BOOKMARKED_HOTELS}'`);
+    /*const bookmarkQuery = this.database.createQuery(
+      `SELECT META().id AS id FROM _ WHERE type = '${this.DOC_TYPE_BOOKMARKED_HOTELS}'`);*/
+    const bookmarkQuery = QueryBuilder.select(SelectResult.all())
+      .from(DataSource.database(this.database))
+      .where(Expression.property('type').equalTo(Expression.string('hotel')))
+      .limit(Expression.intValue(10));
     const resultSet = await bookmarkQuery.execute();
     const resultList = await resultSet.allResults();
 
@@ -124,7 +135,7 @@ export class DatabaseService {
               .setArray("hotels", new Array());
       this.database.save(mutableDocument);
     } else {
-      const docId = resultList[0]["id"]; 
+      const docId = resultList[0]["id"];
       const doc = await this.database.getDocument(docId);
       mutableDocument = MutableDocument.fromDocument(doc);
     }
@@ -133,7 +144,11 @@ export class DatabaseService {
   }
 
   private async getAllHotels() {
-    const query = this.database.createQuery(`SELECT * FROM _ WHERE type = '${this.DOC_TYPE_HOTEL}' ORDER BY name`);
+    const query = QueryBuilder.select(SelectResult.all())
+      .from(DataSource.database(this.database))
+      .where(Expression.property('type').equalTo(Expression.string('hotel')))
+      .limit(Expression.intValue(10));
+    //const query = this.database.createQuery(`SELECT * FROM _ WHERE type = '${this.DOC_TYPE_HOTEL}' ORDER BY name`);
     const result = await query.execute();
     return await result.allResults();
   }
