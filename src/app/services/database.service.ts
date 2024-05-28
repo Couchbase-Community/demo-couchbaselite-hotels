@@ -3,7 +3,7 @@ import {
   Database,
   DatabaseConfiguration,
   MutableDocument
-} from '@ionic-enterprise/couchbase-lite';
+} from '@couchbase-community/ionic-couchbase-lite';
 import { Hotel } from '../models/hotel';
 
 @Injectable({
